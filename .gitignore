@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/langdemokoll
+langdemokoll.so
+langdemokoll.dylib
+langdemokoll.dll
+langdemokoll.a
+langdemokoll.lib
+langdemokoll-test-*
+*.exe
+*.o
+*.obj
+*.lst

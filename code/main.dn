@@ -1,0 +1,15 @@
+
+
+:myVal 22;
+
+
+:myVal2 myVal;
+
+
+:myFunc () {
+    :x 7;
+    x = 44;
+    :myOtherFunc () {
+        :y w;
+    }
+}

@@ -1,0 +1,6 @@
+name "langdemokoll"
+description "A minimal D application."
+authors "Isaac"
+copyright "Copyright © 2021, Isaac"
+license "proprietary"
+dependency "ish" path="D:/user files/Source/D/ish"
