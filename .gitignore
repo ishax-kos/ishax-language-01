@@ -13,3 +13,5 @@ langdemokoll-test-*
 *.o
 *.obj
 *.lst
+test.*
+test.d

@@ -15,6 +15,11 @@ enum unit = Unit.init;
 class Ref(T) {
     T inside;
     alias inside this;
+
+    this(T val) {
+        inside = val;
+    }
 }
+
 
 

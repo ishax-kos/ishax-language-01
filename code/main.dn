@@ -8,8 +8,11 @@
 
 :myFunc () {
     :x 7;
-    x = 44;
+    
     :myOtherFunc () {
         :y w;
     }
+
+    :y w;
 }
+
