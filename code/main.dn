@@ -1,18 +1,14 @@
-
-
 :myVal 22;
 
+:myVal2 0;
 
-:myVal2 myVal;
-
-
-:myFunc () {
+:myFunc (:a, :b) {
     :x 7;
     
-    :myOtherFunc () {
+    :myOtherFunc (:unga, :bunga) {
         :y w;
-    }
+    };
 
     :y w;
-}
+};
 

@@ -3,8 +3,11 @@ import tools;
 import ast;
 import std.stdio;
 import std.format;
-import std.typecons: tuple;
 import symbols;
+import option;
+import std.container: SList;
+import std.typecons: Tuple, tuple;
+import std.conv;
 
 
 
@@ -16,7 +19,7 @@ import symbols;
 /+~~~~~~~~Internal State~~~~~~~~+/
 File* file;
 char lastChar = ' ';
-Statement[] global;
+// Statement[] global;
 // Statement tree;
 Object parent;
 /+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+/
@@ -43,7 +46,7 @@ string parseOrErr(string func)() {
         Otherwise it does not return 
     +/
     return `if (` ~ func ~ `()) {}
-    else mixin(FAILURE);`;
+    else mixin(failure(null));`;
 }
 
 
@@ -63,29 +66,25 @@ size_t tellPosition() {
 }
 
 
-enum FAILURE = q{{
-    if (seek == 0) {
-        lastChar = 'e'; 
-        file.seek(0);
-    }
-    else {
-        assert(seek > 0, "index %s is out of range.".format(seek));
-        writefln("...return to %s, line %s", seek, currentLine);
-        file.seek(seek-1);
-        popChar();
-    }
-    while (lineStack.front.offset > seek) {
-        currentLine -= 1;
-        lineStack.removeFront();
-    }
-    static if (__traits(compiles, lastCall)) {
-        lastCall = seek;
-    }
-    // static if (__traits(compiles, {typeof(return).init;})) 
-        return typeof(return).init;
-    // else return null;
-    
-}};
+string failure(T)(T ret) {
+    return `{`~q{
+        if (seek == 0) {
+            lastChar = 'e'; 
+            file.seek(0);
+        }
+        else {
+            assert(seek > 0, "index %s is out of range.".format(seek));
+            // writefln("...return to %s, line %s", seek, currentLine);
+            file.seek(seek-1);
+            popChar();
+        }
+        while (lineStack.front > seek) {
+            currentLine -= 1;
+            lineStack.removeFront();
+        }
+        return } ~ ret.text ~ `;` ~
+    `}`;
+}
 
 
 void consumeWhitespace() {
@@ -93,14 +92,12 @@ void consumeWhitespace() {
     while (isWhite(lastChar)) popChar();
 }
 
-import std.container: SList;
-import std.typecons: Tuple;
 
 uint currentLine = 1;
-struct NewLine {uint line; size_t offset;}
-SList!NewLine lineStack;
+// struct NewLine {/*uint line;*/ size_t offset;}
+SList!size_t lineStack;
 static this() {
-    lineStack.insertFront(NewLine(1, 0));
+    lineStack.insertFront(0);
 }
 
 void popChar() {
@@ -110,7 +107,10 @@ void popChar() {
         lastChar = '\x00';
         return;
     }
-    if (b == "\n") lineStack.insertFront(NewLine(++currentLine, file.tell()));
+    if (b == "\n") {
+        lineStack.insertFront(file.tell());
+        currentLine += 1;
+    }
     lastChar = b[0];
 }
 
@@ -125,49 +125,52 @@ static this() {
 }
 
 
-Result parseGlobal() {
+Statement[] parseGlobal() {
     ptrdiff_t seek = tellPosition();
-    // writeln("  begin: -", lastChar, "-");
+    // //writeln("  begin: -", lastChar, "-");
 
     // mixin(parseOrErr!`parseStatement`);
     // mixin(parseOrErr!`parseStatement`);  
-
+    Statement[] scop;
     while (!parseEOF()) {
         if (Statement result = parseStatement()) {
-            if (!parse!";") mixin(FAILURE);
-            global ~= result;
+            scop ~= result;
         }
         else assert(0);
     }
-    return mixin(Result_value); 
+    return scop; 
 }
 
 
 Statement parseStatement() {
-    if (auto res = parseExpression) return res;
-    assert(0, `Invalid sequence at line %s.`.format(lineStack.front.line));
+    if (auto res = parseExpression) {
+        assert(parse!";", "Missing semicolon");
+        return res;
+    }
+    assert(0, `Invalid sequence at line %s.`.format(currentLine));
 }
 
-
+ 
 Expression parseExpression() {
     ptrdiff_t seek = tellPosition();
-    writeln("  expr: ");
+    //writeln("  expr: ");
     // ptrdiff_t seek = tellPosition();
     if (Declaration res = parseDeclare) return res;
     if (Assignment res = parseAssign) return res;
     if (auto res = parseVarExpr()) return res;
     if (auto res = parseNumLit()) return new Expression();
-    mixin(FAILURE);
+    if (auto res = parseFuncLiteral()) return res;
+    mixin(failure(null));
 }
 
 
 Assignment parseAssign() {
     ptrdiff_t seek = tellPosition();
     static bool lockMe = false;
-    writeln("  assign: ");
+    //writeln("  assign: ");
     if (lockMe) {
-        writeln("...locked");
-        mixin(FAILURE);
+        //writeln("...locked");
+        mixin(failure(null));
     }
     auto ass = new Assignment();
     {
@@ -175,92 +178,91 @@ Assignment parseAssign() {
         scope(exit) lockMe = false;
         if (auto exp = parseExpression()) 
             ass.lhs = exp; // lhs  // tree
-        else mixin(FAILURE);
+        else mixin(failure(null));
     }
     if (!parse!"=") 
-        mixin(FAILURE);
+        mixin(failure(null));
     if (auto exp = parseExpression) 
         ass.rhs = exp; // rhs  // tree 
-    else mixin(FAILURE);
+    else mixin(failure(null));
     return new Assignment();
 }
 
 
 Expression parseVarInit() {
-    writeln("  declare: ");
+    //writeln("  declare: ");
     ptrdiff_t seek = tellPosition();
     writeln(lastChar);
     mixin(parseOrErr!`parseExpression`); // tree
-    mixin(parseOrErr!`parse!";"`);
     return new Expression();
 }
 
 
 FuncLiteral parseFuncLiteral() {
-    writeln("  function: ");
+    //writeln("  function: ");
     ptrdiff_t seek = tellPosition();
     if (!parse!"(") 
-        mixin(FAILURE);
+        mixin(failure(null));
 
-    // Declaration[] args;
-    // while (1) {
-    //     if (parse!")") break;
-    //     if (parseEOF) assert(0, "Premature end of file.");
-    //     if (auto res = parseDeclare) args ~= res;
-    // }
-    if (!parse!")") 
-        mixin(FAILURE);
+    Declaration[] args;
+    if (!parse!")") while (1) {
+        if (parseEOF) assert(0, "Premature end of file.");
+        if (auto res = parseDeclare) {
+            args ~= res;
+            if (parse!")") break;
+            else assert(parse!",", "missing comma");
+        }
+        
+        else assert(0, "Missing comma in arguments.");
+    }
+    // if (!parse!")") 
+    //     mixin(failure(null));
     
     FuncLiteral fun = new FuncLiteral(
-        new Declaration[0],
-        parseScope()[]
+        args,
+        parseScope().inside
     );
+ 
     return fun;
 }
 
 
 Declaration parseDeclare() {
-    writeln("  declare: ");
+    //writeln("  declare: ");
     ptrdiff_t seek = tellPosition();
-    if (!parse!":") mixin(FAILURE);
+    if (!parse!":") mixin(failure(null));
     Declaration decla;
     if (auto name = parseIdentifier)
         decla = new Declaration(name);
-    else mixin(FAILURE);
+    else mixin(failure(null));
 
-    // writeln("hee");
-    /// No explicit init
-    if (parse!";") return decla;
-    // writeln("ho");
-    /// Data init
     if (auto exp = parseExpression) {
         decla.initial = exp;
         return decla;
     }
-    else mixin(FAILURE);
+    else return decla;
 }
 
 
 Result parseOutput() {
-    writeln("  to stdio: ");
+    //writeln("  to stdio: ");
     ptrdiff_t seek = tellPosition();
     mixin(parseOrErr!`parse!"stdout"`);
     mixin(parseOrErr!`parse!"="`);
     mixin(parseOrErr!`parseExpression`);
-    mixin(parseOrErr!`parse!";"`);
     return mixin(Result_value);
 }
 
 
 Ref!string parseIdentifier() {
-    writeln("  identifier: ");
+    //writeln("  identifier: ");
     import std.uni: isLower, isAlphaNum;
     ptrdiff_t seek = tellPosition();
     
     consumeWhitespace();
 
     if (lastChar.isLower()) {}
-    else mixin(FAILURE);
+    else mixin(failure(null));
 
     string identifierStr = [cast(char) lastChar]; 
     
@@ -274,9 +276,9 @@ Ref!string parseIdentifier() {
         identifierStr ~= lastChar;
     }
 
-    if (identifierStr in keywords) mixin(FAILURE);
+    if (identifierStr in keywords) mixin(failure(null));
 
-    writeln(identifierStr);
+    // writeln(identifierStr);
     
     return new Ref!string(identifierStr); /// node with identifier string
 }
@@ -284,13 +286,13 @@ Ref!string parseIdentifier() {
 
 bool parse(string str)() {
     /// parse sepcific symbols and identifiers
-    writefln("  symbol(%s)", str);
+    //writefln("  symbol(%s)", str);
     ptrdiff_t seek = tellPosition();
 
     consumeWhitespace();
 
     if (lastChar == str[0]) {}
-    else mixin(FAILURE);
+    else mixin(failure(false));
 
     size_t i = 0;
     while (1) {
@@ -308,7 +310,7 @@ bool parse(string str)() {
 
 
 Result parseNumLit() {
-    writeln("  number: ");
+    //writeln("  number: ");
     ptrdiff_t seek = tellPosition();
     
     consumeWhitespace();
@@ -319,7 +321,7 @@ Result parseNumLit() {
 
     /// Test first digit
     if (isNum(lastChar)) {}
-    else mixin(FAILURE);
+    else mixin(failure(null));
 
     string numStr = ""; 
     
@@ -333,7 +335,7 @@ Result parseNumLit() {
         }
     }
 
-    writeln(numStr);
+    // writeln(numStr);
     import std.conv: convStr = parse;
     numStr.convStr!int;
 
@@ -349,12 +351,12 @@ bool parseEOF() {
 
 alias Scope = Statement[];
 Ref!Scope parseScope() {
-    writeln("  scope: ");
+    //writeln("  scope: ");
     ptrdiff_t seek = tellPosition();
     
-    if(!parse!"{") mixin(FAILURE);
+    if(!parse!"{") mixin(failure(null));
 
-    Ref!Scope scope_ = new Ref!Scope(new Statement[0]);
+    Ref!Scope scope_ = new Ref!Scope(new Scope(0));
 
     while (1) {
         if (parse!"}") return scope_;
@@ -369,13 +371,15 @@ VarExpr parseVarExpr() {
     auto var = new VarExpr();
     if (auto name = parseIdentifier()) {
         var.name.require(cast(string) name);
-    } else mixin(FAILURE);
+    } else mixin(failure(null));
 
     return var;
 }
 
 unittest {
-    file = loadSource("code/test.dn");
+    file = loadSource("code/main.dn");
     // assert(cast(string)parseIdentifier() == "myFoe");
-    assert(parseGlobal);
+    auto ast = parseGlobal;
+    assert(ast);
+    writefln!"%(%s\n%)"(ast);
 }
