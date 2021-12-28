@@ -1,14 +1,24 @@
-:myVal 22;
 
-:myVal2 0;
 
-:myFunc (:a, :b) {
-    :x 7;
+;myVar
+
+;myOtherVar = 47
+
+blue
+
+if (val) {
+	stuff
+}
+
+
+;myFunc = ;a ;b {
+    ;x = 7
     
-    :myOtherFunc (:unga, :bunga) {
-        :y w;
-    };
+    set x 4
+    
+    ;myOtherFunc = ;unga ;bunga {
+        ;y = w
+    }
 
-    :y w;
-};
-
+    ;y = w
+}
