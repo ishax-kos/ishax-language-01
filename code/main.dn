@@ -1,24 +1,7 @@
-
-
-;myVar
-
-;myOtherVar = 47
-
-blue
-
-if (val) {
-	stuff
-}
-
-
-;myFunc = ;a ;b {
-    ;x = 7
-    
-    set x 4
-    
-    ;myOtherFunc = ;unga ;bunga {
-        ;y = w
+;main = (;args) {
+    if (truth) {
+        this
+    } else {
+        *(print 11)
     }
-
-    ;y = w
 }

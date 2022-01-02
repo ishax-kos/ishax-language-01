@@ -1,7 +1,7 @@
 module tools;
-
+import std.sumtype;
 // public import;
-
+// import option;
 
 bool isAn(T, U)(U val) {
 	return typeid(val) == typeid(T);
@@ -20,6 +20,5 @@ class Ref(T) {
         inside = val;
     }
 }
-
 
 

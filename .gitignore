@@ -15,3 +15,5 @@ langdemokoll-test-*
 *.lst
 test.*
 test.d
+.vs/langdemokoll/v15/.suo
+langdemokoll.sln

@@ -1,4 +1,4 @@
-module parse.core;
+module parse;
 import tools;
 import ast;
 import std.stdio;
@@ -7,12 +7,7 @@ import symbols;
 import std.container : SList;
 import std.typecons : Tuple, tuple;
 import std.conv;
- 
- 
-// class Node {
-//     Node[] children;
-// }
-// alias Result = bool;
+import std.sumtype;
  
 /+~~~~~/+~~~Internal State~~~+/~~~~~+/
 File* file;
@@ -20,8 +15,7 @@ char lastChar = ' ';
 Object parent;
 /+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+/
 
-File* loadSource(T)(T location)
-{
+File* loadSource(T)(T location) {
     return new File(location, "rb");
 }
 
@@ -33,39 +27,31 @@ enum Result_value = "new Object()";
 // }
 
 /// macro
-string parseOrErr(string func)()
-{
-    /++     
-        Calls func(state). If func is false, 
-        (meaning it hit an error in the source) 
-        it propagates that error by returning false. 
-        Otherwise it does not return 
-    +/
-    return `if (` ~ func ~ `()) {}
-    else mixin(failure(null));`;
-}
 
-size_t tellPosition()
-{
+enum INVALID_SEQUENCE = `assert(0, 
+    format!"Invalid sequence at line %s/%s."(currentLine,currentCol)
+);`;
+
+size_t tellPosition() {
     import std.exception;
 
     size_t pos;
-    try
-    {
+    try {
         pos = file.tell();
     }
-    catch (ErrnoException e)
-    {
-        writeln("ftell failure");
+    catch (ErrnoException e) {
+        writeln("ftell err");
         return -2;
     }
     //*** writefln("file seek position is %s.", pos);
     return pos;
 }
 
-string failure(T)(T ret)
-{
-    return `{` ~ q{
+
+mixin template errorTrace() {
+    ptrdiff_t seek = tellPosition();
+    private alias T = typeof(return);
+    T err(T ret)() {
     	//errPos = seek;
         if (seek == 0) {
             lastChar = 'e'; 
@@ -81,13 +67,45 @@ string failure(T)(T ret)
             currentLine -= 1;
             lineStack.removeFront();
         }
-        return }
-        ~ ret.text ~ `;` ~
-        `}`;
+        return ret;
+    }
 }
 
-void consumeWhitespace()
-{
+/*
+alias Result(T...) = SumType!(Error, T);
+
+
+mixin template errorTrace() {
+    import std.traits;
+    ptrdiff_t seek = tellPosition();
+    private alias Res = typeof(return);
+    private alias RetT = TemplateArgsOf!(typeof(return))[1];
+    Res err(string msg = "Unnamed error.") {
+    	//errPos = seek;
+        if (seek == 0) {
+            lastChar = '\0'; 
+            file.seek(0);
+        }
+        else {
+            assert(seek > 0, "index %s is out of range.".format(seek));
+            // writefln("...return to %s, line %s", seek, currentLine);
+            file.seek(seek-1);
+            popChar();
+        }
+        while (lineStack.front > seek) {
+            currentLine -= 1;
+            lineStack.removeFront();
+        }
+        return Res(new Error(msg));
+    }
+
+
+    Res ok(RetT val) {
+        Res(val);
+    }
+}*/
+
+void consumeWhitespace() {
     import std.uni : isWhite;
 
     while (isWhite(lastChar))
@@ -98,8 +116,7 @@ void consumeWhitespace()
 size_t currentLine = 1;
 //size_t errPos = 1;
 SList!size_t lineStack;
-static this()
-{
+static this() {
     lineStack.insertFront(0);
 }
 
@@ -109,17 +126,14 @@ size_t currentCol() {
 }
 
 
-void popChar()
-{
+void popChar() {
     char[1] b;
     file.rawRead(b);
-    if (file.eof)
-    {
+    if (file.eof) {
         lastChar = '\x00';
         return;
     }
-    if (b == "\n")
-    {
+    if (b == "\n") {
         lineStack.insertFront(file.tell());
         currentLine += 1;
     }
@@ -127,8 +141,7 @@ void popChar()
 }
 
 bool[string] keywords;
-static this()
-{
+static this() {
     keywords = [
         "if": 0,
         "then": 0,
@@ -137,18 +150,12 @@ static this()
     ];
 }
 
-Statement[] parseGlobal()
-{
-    ptrdiff_t seek = tellPosition();
-    // //writeln("  begin: -", lastChar, "-");
+Statement[] parseGlobal() {
+    mixin errorTrace;
 
-    // mixin(parseOrErr!`parseStatement`);
-    // mixin(parseOrErr!`parseStatement`);  
     Statement[] scop;
-    while (!parseEOF())
-    {
-        if (Statement result = parseStatement())
-        {
+    while (!parseEOF()) {
+        if (Statement result = parseStatement()) {
             scop ~= result;
         }
         else
@@ -157,41 +164,40 @@ Statement[] parseGlobal()
     return scop;
 }
 
-Statement parseStatement()
-{
-    if (auto res = parseExpression)
-    {
+Statement parseStatement() {
+    // mixin errorTrace;
+    if (auto res = parseExpression) {
         //assert(parse!";", format!"Missing semicolon at line %s/%s."(
         	//currentLine,currentCol));
         return res;
     }
-    assert(0, format!"Invalid sequence at line %s/%s."(
-    	currentLine,currentCol));
+    mixin(INVALID_SEQUENCE);
 }
 
-Expression parseExpression()
-{
-    ptrdiff_t seek = tellPosition();
+/*Result!
+*/Expression parseExpression() {
+    mixin errorTrace;
     //writeln("  expr: ");
-    // ptrdiff_t seek = tellPosition();
+    // mixin errorTrace;
     if (auto res = parseIfElse()) return res;
-    if (Declaration res = parseDeclare) return res;
-    if (Assignment res = parseAssign) return res;
-    if (auto res = parseVarExpr()) return res;
-    if (auto res = parseNumLit()) return new Expression();
+    if (auto res = parseDeclare()) return res;
+    if (auto res = parseAssign()) return res;
+    if (auto res = parseCall()) return res;
     if (auto res = parseFuncLiteral()) return res;
-    mixin(failure(null));
+    if (auto res = parseVarExpr()) return res;
+    if (auto res = parseNumLit()) return res;
+    if (auto res = parseStringLit()) return res;
+    return err!null;
 }
 
-Assignment parseAssign()
-{
-    ptrdiff_t seek = tellPosition();
+/*Result!
+*/Assignment parseAssign() {
+    mixin errorTrace;
     static bool lockMe = false;
     //writeln("  assign: ");
-    if (lockMe)
-    {
+    if (lockMe) {
         //writeln("...locked");
-        mixin(failure(null));
+        return err!null;
     }
     auto ass = new Assignment();
     //{
@@ -201,113 +207,100 @@ Assignment parseAssign()
         //if (auto exp = parseExpression())
             //ass.lhs = exp; // lhs  // tree
         //else
-            //mixin(failure(null));
+            //return err!null;
     //}
     if (!parse!"set")
-        mixin(failure(null));
+        return err!null;
     
     if (auto exp = parseExpression())
         ass.lhs = exp; // lhs  // tree
     else
-        mixin(failure(null));
+        return err!null;
         
     if (auto exp = parseExpression)
         ass.rhs = exp; // rhs  // tree 
     else
-        mixin(failure(null));
+        return err!null;
     return new Assignment();
 }
 
-Expression parseVarInit()
-{
-    //writeln("  declare: ");
-    ptrdiff_t seek = tellPosition();
-    writeln(lastChar);
-    mixin(parseOrErr!`parseExpression`); // tree
-    return new Expression();
-}
-
-FuncLiteral parseFuncLiteral()
-{
+/*Result!
+*/FuncLiteral parseFuncLiteral() {
     //writeln("  function: ");
-    ptrdiff_t seek = tellPosition();
+    mixin errorTrace;
     //if (!parse!"(")
-        //mixin(failure(null));
+        //return err!null;
 
     Declaration[] args;
     if (parse!"(") {
-		while (auto res = parseDeclare)
-		{
-			args ~= res;	
+		while (!parse!")") {
+            if (auto res = parseDeclare) 
+			    args ~= res;
+            else mixin(INVALID_SEQUENCE);
 		}
-		if (!parse!")")
-	         mixin(failure(null));
 	}
 	else if (!parse!"&")
-	         mixin(failure(null));
+	         return err!null;
 
     FuncLiteral fun = new FuncLiteral(
         args,
-        parseScope().inside
+        parseScope()
     );
     return fun;
 }
 
-Declaration parseDeclare()
-{
+/*Result!
+*/Declaration parseDeclare() {
     //writeln("  declare: ");
-    ptrdiff_t seek = tellPosition();
+    mixin errorTrace;
      if (!parse!";")
-         mixin(failure(null));
+         return err!null;
     Declaration decla;
     if (auto name = parseIdentifier)
         decla = new Declaration(name);
     else
-        mixin(failure(null));
+        return err!null;
 	
 	if (parse!"=") {
 	    if (auto exp = parseExpression) {
 	        decla.initial = exp;
 	    } 
-	    else mixin(failure(null));
+	    else return err!null;
     }
-	//else if (!parse!";") mixin(failure(null));
+	//else if (!parse!";") return err!null;
     
     return decla;
 }
 
 // void parseOutput() {
 //     //writeln("  to stdio: ");
-//     ptrdiff_t seek = tellPosition();
+//     mixin errorTrace;
 //     mixin(parseOrErr!`parse!"stdout"`);
 //     mixin(parseOrErr!`parse!"="`);
 //     mixin(parseOrErr!`parseExpression`);
 //     return mixin(Result_value);
 // }
 
-Ref!string parseIdentifier()
-{
+/*Result!
+*/string parseIdentifier() {
     //writeln("  identifier: ");
     import std.uni : isLower, isAlphaNum;
 
-    ptrdiff_t seek = tellPosition();
+    mixin errorTrace;
 
     consumeWhitespace();
 
-    if (lastChar.isLower())
-    {
+    if (lastChar.isLower()) {
     }
     else
-        mixin(failure(null));
+        return err!null;
 
     string identifierStr = [cast(char) lastChar];
 
-    while (1)
-    {
+    while (1) {
         // write(lastChar);
         popChar();
-        if (!isAlphaNum(lastChar))
-        {
+        if (!isAlphaNum(lastChar)) {
             // writeln("-", cast(uint)lastChar, "-");
             break;
         }
@@ -315,34 +308,31 @@ Ref!string parseIdentifier()
     }
 
     if (identifierStr in keywords)
-        mixin(failure(null));
+        return err!null;
 
     // writeln(identifierStr);
 
     return new Ref!string(identifierStr); /// node with identifier string
 }
 
-bool parse(string str)()
-{
+/*Result!
+*/bool parse(string str)() {
     /// parse sepcific symbols and identifiers
     //writefln("  symbol(%s)", str);
-    ptrdiff_t seek = tellPosition();
+    mixin errorTrace;
 
     consumeWhitespace();
 
-    if (lastChar == str[0])
-    {
+    if (lastChar == str[0]) {
     }
     else
-        mixin(failure(false));
+        return err!false;
 
     size_t i = 0;
-    while (1)
-    {
+    while (1) {
         // write(lastChar);
         popChar();
-        if (++i >= str.length || lastChar != str[i])
-        {
+        if (++i >= str.length || lastChar != str[i]) {
             // writeln("-", cast(uint)lastChar, "-");
             break;
         }
@@ -352,34 +342,27 @@ bool parse(string str)()
     return true;
 }
 
-Ref!long parseNumLit()
-{
+/*Result!
+*/IntegerLit parseNumLit() {
     //writeln("  number: ");
-    ptrdiff_t seek = tellPosition();
+    mixin errorTrace;
 
     consumeWhitespace();
 
-    bool isNum(dchar ch)
-    {
+    bool isNum(dchar ch) {
         return (ch >= '0' && ch <= '9'); 
     }
 
     /// Test first digit
-    if (isNum(lastChar))
-    {
-    }
-    else
-        mixin(failure(null));
+    if (!isNum(lastChar)) return err!null;
 
     string numStr = "";
 
-    while (1)
-    {
+    while (1) {
         // write(lastChar);
         numStr ~= cast(char) lastChar;
         popChar();
-        if (!isNum(lastChar))
-        {
+        if (!isNum(lastChar)) {
             // writeln("-", cast(uint)lastChar, "-");
             break;
         }
@@ -387,82 +370,82 @@ Ref!long parseNumLit()
 
     // writeln(numStr);
     import std.conv : convStr = parse;
-
-    return new Ref!long(numStr.convStr!long);
+    auto lit = new IntegerLit();
+    lit.value = numStr.convStr!long;
+    return lit;
 }
 
-bool parseEOF()
-{
+/*Result!
+*/bool parseEOF() {
+    mixin errorTrace;
     consumeWhitespace();
-    return file.eof;
+    if (file.eof) return true;
+    else return err!false;
 }
 
-alias Scope = Statement[];
-Ref!Scope parseScope()
-{
+/*Result!
+*/Scope parseScope() {
     //writeln("  scope: ");
-    ptrdiff_t seek = tellPosition();
+    mixin errorTrace;
 
     if (!parse!"{")
-        mixin(failure(null));
+        return err!null;
 
-    Ref!Scope scope_ = new Ref!Scope(new Scope(0));
+    Scope scope_ = new Scope();
 
-    while (1)
-    {
+    while (1) {
         if (parse!"}") {
             return scope_;
         }
         if (parseEOF)
             assert(0, "Premature end of file.");
         if (auto res = parseStatement)
-            scope_ ~= res;
+            scope_.statements ~= res;
     }
-
 }
 
-VarExpr parseVarExpr()
-{
-    ptrdiff_t seek = tellPosition();
+
+/*Result!
+*/VarExpr parseVarExpr() {
+    mixin errorTrace;
     auto var = new VarExpr();
-    if (auto name = parseIdentifier())
-    {
-        var.name.require(cast(string) name);
+    if (auto name = parseIdentifier()) {
+        var.symbol.require(cast(string) name);
     }
     else
-        mixin(failure(null));
+        return err!null;
 
     return var;
 }
 
 
 
-IfExpr parseIfElse()
-{
-    ptrdiff_t seek = tellPosition();
+/*Result!
+*/IfExpr parseIfElse() {
+    mixin errorTrace;
     auto ifex = new IfExpr();
     
-    if (!parse!"if"()) mixin(failure(null));
+    if (!parse!"if"()) return err!null;
     
 	bool neg = false;
-    if (!parse!"!"()) neg = true;
+    if (parse!"!"()) neg = true;
     
-    if (!parse!"("()) mixin(failure(null));
+    if (!parse!"("()) return err!null;
     
     if (auto exp = parseExpression()) {
     	ifex.condition = exp;
-    } else mixin(failure(null));
+    } else return err!null;
     
-    if (!parse!")"()) mixin(failure(null));
+    if (!parse!")"()) return err!null;
     
     if (auto scop = parseScope()) {
     	ifex.ifTrue = scop;
-    } else mixin(failure(null));
+    } else return err!null;
     
     if (parse!"else") {
 	    if (auto scop = parseScope()) {
 	    	ifex.ifFalse = scop;
-	    } mixin(failure(null));
+	    } return err!null;
     }
     else {
 	    if (auto scop = parseScope()) {
@@ -475,9 +458,48 @@ IfExpr parseIfElse()
 }
 
 
-unittest
-{
-    file = loadSource("code/test.dn");
+/*Result!
+*/CallExpr parseCall() {
+    mixin errorTrace;
+    auto call = new CallExpr();
+    if (!parse!("*")) return err!null;
+    if (!parse!("(")) return err!null;
+    if (auto caller = parseExpression) call.caller = caller;
+    else return err!null;
+    while (!parse!(")")) 
+        if (auto arg = parseExpression()) 
+            call.args ~= arg;
+        else mixin(INVALID_SEQUENCE);
+    
+    return call;
+}
+
+
+/*Result!
+*/StringLit parseStringLit() {
+    mixin errorTrace;
+
+    consumeWhitespace();
+    if (lastChar != '"') return err!null;
+    popChar();
+    auto str = new StringLit();
+    
+    while (lastChar != '"') {
+        // writeln(lastChar);
+        str.value ~= lastChar;
+        if (parseEOF()) assert(0);
+        popChar();
+    }
+    popChar();
+    // str.value = ("hello world");
+    // writeln(str.value);
+    return str;
+}
+
+
+
+unittest {
+    file = loadSource("code/main.dn");
     // assert(cast(string)parseIdentifier() == "myFoe");
     auto ast = parseGlobal;
     assert(ast);
