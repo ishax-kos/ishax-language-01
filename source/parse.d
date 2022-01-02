@@ -19,6 +19,23 @@ File* loadSource(T)(T location) {
     return new File(location, "rb");
 }
 
+
+class Err {
+    string msg;
+    ptrdiff_t line;
+    ptrdiff_t col;
+    this(string msg) {
+        this.msg = msg;
+        line = currentLine; col = currentCol;
+    }
+
+    override
+    string toString() {
+        return format!"Error at %s/%s: %s"(currentLine,currentCol, msg);
+    }
+}
+
+
 // alias Result = Object;
 enum Result_value = "new Object()";
 // enum Result {
@@ -47,7 +64,7 @@ size_t tellPosition() {
     return pos;
 }
 
-
+/*
 mixin template errorTrace() {
     ptrdiff_t seek = tellPosition();
     private alias T = typeof(return);
@@ -71,39 +88,55 @@ mixin template errorTrace() {
     }
 }
 
-/*
-alias Result(T...) = SumType!(Error, T);
+/*/
+alias Result(T...) = SumType!(Err, T);
 
+T pass(T)(T val) {return val;}
+T errorOut(T)(Err e) {assert(0, e.to!string);}
 
 mixin template errorTrace() {
     import std.traits;
     ptrdiff_t seek = tellPosition();
     private alias Res = typeof(return);
-    private alias RetT = TemplateArgsOf!(typeof(return))[1];
-    Res err(string msg = "Unnamed error.") {
-    	//errPos = seek;
-        if (seek == 0) {
-            lastChar = '\0'; 
-            file.seek(0);
-        }
-        else {
-            assert(seek > 0, "index %s is out of range.".format(seek));
-            // writefln("...return to %s, line %s", seek, currentLine);
-            file.seek(seek-1);
-            popChar();
-        }
-        while (lineStack.front > seek) {
-            currentLine -= 1;
-            lineStack.removeFront();
-        }
-        return Res(new Error(msg));
-    }
+    static assert (__traits(isSame, SumType, TemplateOf!(typeof(return))));
+    static assert (TemplateArgsOf!(typeof(return)).length == 2);
+    static assert (is(TemplateArgsOf!(typeof(return))[0] == Err));
+        // ); 
+        // {
+        private alias RetT = TemplateArgsOf!(typeof(return))[1];
 
 
-    Res ok(RetT val) {
-        Res(val);
-    }
-}*/
+        Res err(string msg = "Unnamed error.")() {
+            //errPos = seek;
+            if (seek == 0) {
+                lastChar = '\0';
+                file.seek(0);
+            }
+            else {
+                assert(seek > 0, "index %s is out of range.".format(seek));
+                // writefln("...return to %s, line %s", seek, currentLine);
+                file.seek(seek-1);
+                popChar();
+            }
+            while (lineStack.front > seek) {
+                currentLine -= 1;
+                lineStack.removeFront();
+            }
+            return Res(new Err(msg));
+        }
+
+
+        Res ok(RetT val) {
+            return Res(val);
+        }
+    // }
+    // else {
+    //     private alias RetT = typeof(return);
+    // }
+    
+
+}
+//*/
 
 void consumeWhitespace() {
     import std.uni : isWhite;
@@ -151,10 +184,12 @@ static this() {
 }
 
 Statement[] parseGlobal() {
-    mixin errorTrace;
+    // mixin errorTrace;
 
     Statement[] scop;
-    while (!parseEOF()) {
+    while (1) {
+        consumeWhitespace();
+        if (file.eof()) break;
         if (Statement result = parseStatement()) {
             scop ~= result;
         }
@@ -165,39 +200,46 @@ Statement[] parseGlobal() {
 }
 
 Statement parseStatement() {
-    // mixin errorTrace;
-    if (auto res = parseExpression) {
-        //assert(parse!";", format!"Missing semicolon at line %s/%s."(
-        	//currentLine,currentCol));
-        return res;
-    }
-    mixin(INVALID_SEQUENCE);
+    return parseExpression.match!(
+        pass!Expression,
+        errorOut!Expression
+    )();
 }
 
-/*Result!
-*/Expression parseExpression() {
+Result!Expression parseExpression() {
     mixin errorTrace;
-    //writeln("  expr: ");
-    // mixin errorTrace;
-    if (auto res = parseIfElse()) return res;
-    if (auto res = parseDeclare()) return res;
-    if (auto res = parseAssign()) return res;
-    if (auto res = parseCall()) return res;
-    if (auto res = parseFuncLiteral()) return res;
-    if (auto res = parseVarExpr()) return res;
-    if (auto res = parseNumLit()) return res;
-    if (auto res = parseStringLit()) return res;
-    return err!null;
+    Expression exp;
+    auto calls = [
+        &parseIfElse, 
+        &parseDeclare,
+        &parseAssign,
+        &parseCall,
+        &parseFuncLiteral,
+        &parseVarExpr,
+        &parseNumLit,
+        &parseStringLit
+    ];
+    foreach (call; calls) if (call().match!(
+        (IfExpr v) {exp = v; return true;},
+    )()) return exp;
+    // if (auto res = parseIfElse()) return res;
+    // if (auto res = parseDeclare()) return res;
+    // if (auto res = parseAssign()) return res;
+    // if (auto res = parseCall()) return res;
+    // if (auto res = parseFuncLiteral()) return res;
+    // if (auto res = parseVarExpr()) return res;
+    // if (auto res = parseNumLit()) return res;
+    // if (auto res = parseStringLit()) return res;
+    return err("Invalid expression.");
 }
 
-/*Result!
-*/Assignment parseAssign() {
+Result!Assignment parseAssign() {
     mixin errorTrace;
     static bool lockMe = false;
     //writeln("  assign: ");
     if (lockMe) {
         //writeln("...locked");
-        return err!null;
+        return err();
     }
     auto ass = new Assignment();
     //{
@@ -207,29 +249,28 @@ Statement parseStatement() {
         //if (auto exp = parseExpression())
             //ass.lhs = exp; // lhs  // tree
         //else
-            //return err!null;
+            //return err();
     //}
     if (!parse!"set")
-        return err!null;
+        return err();
     
     if (auto exp = parseExpression())
         ass.lhs = exp; // lhs  // tree
     else
-        return err!null;
+        return err();
         
     if (auto exp = parseExpression)
         ass.rhs = exp; // rhs  // tree 
     else
-        return err!null;
+        return err();
     return new Assignment();
 }
 
-/*Result!
-*/FuncLiteral parseFuncLiteral() {
+Result!FuncLiteral parseFuncLiteral() {
     //writeln("  function: ");
     mixin errorTrace;
     //if (!parse!"(")
-        //return err!null;
+        //return err();
 
     Declaration[] args;
     if (parse!"(") {
@@ -240,7 +281,7 @@ Statement parseStatement() {
 		}
 	}
 	else if (!parse!"&")
-	         return err!null;
+	         return err();
 
     FuncLiteral fun = new FuncLiteral(
         args,
@@ -249,25 +290,24 @@ Statement parseStatement() {
     return fun;
 }
 
-/*Result!
-*/Declaration parseDeclare() {
+Result!Declaration parseDeclare() {
     //writeln("  declare: ");
     mixin errorTrace;
      if (!parse!";")
-         return err!null;
+         return err();
     Declaration decla;
     if (auto name = parseIdentifier)
         decla = new Declaration(name);
     else
-        return err!null;
+        return err();
 	
 	if (parse!"=") {
 	    if (auto exp = parseExpression) {
 	        decla.initial = exp;
 	    } 
-	    else return err!null;
+	    else return err();
     }
-	//else if (!parse!";") return err!null;
+	//else if (!parse!";") return err();
     
     return decla;
 }
@@ -281,8 +321,7 @@ Statement parseStatement() {
 //     return mixin(Result_value);
 // }
 
-/*Result!
-*/string parseIdentifier() {
+Result!string parseIdentifier() {
     //writeln("  identifier: ");
     import std.uni : isLower, isAlphaNum;
 
@@ -293,7 +332,7 @@ Statement parseStatement() {
     if (lastChar.isLower()) {
     }
     else
-        return err!null;
+        return err();
 
     string identifierStr = [cast(char) lastChar];
 
@@ -308,15 +347,14 @@ Statement parseStatement() {
     }
 
     if (identifierStr in keywords)
-        return err!null;
+        return err();
 
     // writeln(identifierStr);
 
     return new Ref!string(identifierStr); /// node with identifier string
 }
 
-/*Result!
-*/bool parse(string str)() {
+Result!bool parse(string str)() {
     /// parse sepcific symbols and identifiers
     //writefln("  symbol(%s)", str);
     mixin errorTrace;
@@ -342,8 +380,7 @@ Statement parseStatement() {
     return true;
 }
 
-/*Result!
-*/IntegerLit parseNumLit() {
+Result!IntegerLit parseNumLit() {
     //writeln("  number: ");
     mixin errorTrace;
 
@@ -354,7 +391,7 @@ Statement parseStatement() {
     }
 
     /// Test first digit
-    if (!isNum(lastChar)) return err!null;
+    if (!isNum(lastChar)) return err();
 
     string numStr = "";
 
@@ -375,21 +412,19 @@ Statement parseStatement() {
     return lit;
 }
 
-/*Result!
-*/bool parseEOF() {
+Result!bool parseEOF() {
     mixin errorTrace;
     consumeWhitespace();
     if (file.eof) return true;
     else return err!false;
 }
 
-/*Result!
-*/Scope parseScope() {
+Result!Scope parseScope() {
     //writeln("  scope: ");
     mixin errorTrace;
 
     if (!parse!"{")
-        return err!null;
+        return err();
 
     Scope scope_ = new Scope();
 
@@ -405,47 +440,45 @@ Statement parseStatement() {
 }
 
 
-/*Result!
-*/VarExpr parseVarExpr() {
+Result!VarExpr parseVarExpr() {
     mixin errorTrace;
     auto var = new VarExpr();
     if (auto name = parseIdentifier()) {
         var.symbol.require(cast(string) name);
     }
     else
-        return err!null;
+        return err();
 
     return var;
 }
 
 
 
-/*Result!
-*/IfExpr parseIfElse() {
+Result!IfExpr parseIfElse() {
     mixin errorTrace;
     auto ifex = new IfExpr();
     
-    if (!parse!"if"()) return err!null;
+    if (!parse!"if"()) return err();
     
 	bool neg = false;
     if (parse!"!"()) neg = true;
     
-    if (!parse!"("()) return err!null;
+    if (!parse!"("()) return err();
     
     if (auto exp = parseExpression()) {
     	ifex.condition = exp;
-    } else return err!null;
+    } else return err();
     
-    if (!parse!")"()) return err!null;
+    if (!parse!")"()) return err();
     
     if (auto scop = parseScope()) {
     	ifex.ifTrue = scop;
-    } else return err!null;
+    } else return err();
     
     if (parse!"else") {
 	    if (auto scop = parseScope()) {
 	    	ifex.ifFalse = scop;
-	    } return err!null;
+	    } return err();
     }
     else {
 	    if (auto scop = parseScope()) {
@@ -458,14 +491,13 @@ Statement parseStatement() {
 }
 
 
-/*Result!
-*/CallExpr parseCall() {
+Result!CallExpr parseCall() {
     mixin errorTrace;
     auto call = new CallExpr();
-    if (!parse!("*")) return err!null;
-    if (!parse!("(")) return err!null;
+    if (!parse!("*")) return err();
+    if (!parse!("(")) return err();
     if (auto caller = parseExpression) call.caller = caller;
-    else return err!null;
+    else return err();
     while (!parse!(")")) 
         if (auto arg = parseExpression()) 
             call.args ~= arg;
@@ -475,12 +507,11 @@ Statement parseStatement() {
 }
 
 
-/*Result!
-*/StringLit parseStringLit() {
+Result!StringLit parseStringLit() {
     mixin errorTrace;
 
     consumeWhitespace();
-    if (lastChar != '"') return err!null;
+    if (lastChar != '"') return err();
     popChar();
     auto str = new StringLit();
     
