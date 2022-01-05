@@ -1,7 +1,5 @@
-;main = (;args) {
+:main = (args) {
     if (truth) {
         this
-    } else {
-        *(print 11)
-    }
+    } 
 }

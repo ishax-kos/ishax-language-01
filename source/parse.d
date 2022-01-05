@@ -15,6 +15,9 @@ char lastChar = ' ';
 Object parent;
 /+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+/
 
+
+
+
 File* loadSource(T)(T location) {
     return new File(location, "rb");
 }
@@ -51,7 +54,14 @@ size_t tellPosition() {
 mixin template errorTrace() {
     ptrdiff_t seek = tellPosition();
     private alias T = typeof(return);
+    
+    enum string parentName = __traits(identifier, __traits(parent, {}));
+
     T err(T ret)() {
+        // writeln(
+        //     format!"Invalid sequence at line %s/%s. %s"(currentLine,currentCol,
+        //     parentName)
+        // );
     	//errPos = seek;
         if (seek == 0) {
             lastChar = 'e'; 
@@ -171,7 +181,9 @@ Statement parseStatement() {
         	//currentLine,currentCol));
         return res;
     }
-    mixin(INVALID_SEQUENCE);
+    assert(0,
+        format!"Invalid sequence at line %s/%s."(currentLine,currentCol)
+    );
 }
 
 /*Result!
@@ -179,14 +191,14 @@ Statement parseStatement() {
     mixin errorTrace;
     //writeln("  expr: ");
     // mixin errorTrace;
-    if (auto res = parseIfElse()) return res;
-    if (auto res = parseDeclare()) return res;
     if (auto res = parseAssign()) return res;
-    if (auto res = parseCall()) return res;
     if (auto res = parseFuncLiteral()) return res;
+    if (auto res = parseDeclare()) return res;
+    if (auto res = parseCall()) return res;
     if (auto res = parseVarExpr()) return res;
     if (auto res = parseNumLit()) return res;
     if (auto res = parseStringLit()) return res;
+    if (auto res = parseIfElse()) return res;
     return err!null;
 }
 
@@ -422,6 +434,7 @@ Statement parseStatement() {
 
 /*Result!
 */IfExpr parseIfElse() {
+    writeln("wee wah");
     mixin errorTrace;
     auto ifex = new IfExpr();
     
@@ -442,17 +455,12 @@ Statement parseStatement() {
     	ifex.ifTrue = scop;
     } else return err!null;
     
-    if (parse!"else") {
-	    if (auto scop = parseScope()) {
-	    	ifex.ifFalse = scop;
-	    } return err!null;
-    }
-    else {
-	    if (auto scop = parseScope()) {
-	    	ifex.ifFalse = scop;
-	    }
-    }
-    
+    if (!parse!"else") 
+        return ifex;
+
+    if (auto scop = parseScope()) {
+        ifex.ifFalse = scop;
+    } else return err!null;
 
     return ifex;
 }
