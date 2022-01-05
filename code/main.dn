@@ -1,7 +1,1 @@
-;main = (;args) {
-    if (truth) {
-        this
-    } else {
-        *(print 11)
-    }
-}
+"foo"

@@ -17,3 +17,4 @@ test.*
 test.d
 .vs/langdemokoll/v15/.suo
 langdemokoll.sln
+_ *
