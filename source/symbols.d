@@ -7,7 +7,7 @@ import std.container.slist;
 // alias Symbol = string;
 
 
-struct Symbol {
+class Symbol {
     string name;
 }
 
