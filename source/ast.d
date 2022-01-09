@@ -29,10 +29,9 @@ string[] getTab(T)(T[] strList) {
 
 
 string[] toLines(Expression val) {
-    return [typeof(this).stringof];
-    // return val.match!(
-    //     (v) => v.toLines
-    // )();
+    return val.match!(
+        (v) => v.toLines
+    )();
 }
 
 string[] toLines(Unit u) {
