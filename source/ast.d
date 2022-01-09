@@ -28,10 +28,14 @@ string[] getTab(T)(T[] strList) {
 }
 
 
-string[] toLines(T)(T val) {
+string[] toLines(Expression val) {
     return val.match!(
         (v) => v.toLines
     )();
+}
+
+string[] toLines(Unit u) {
+    return ["[nil]"];
 }
 
 
@@ -47,11 +51,19 @@ mixin template ExprState() {
     }
 }
 
-alias Statement = SumType!Expression;
+
+pragma(msg, Return().toLines);
+
+// alias Statement = SumType!StatementT;
+// alias StatementT = NoDuplicates!(
+//     ExpressionT,
+//     Return
+// );
 
 /+~~~~Expressions~~~~+/
 
-alias Expression = NoDuplicates!(AliasSeq!(
+alias Expression = SumType!ExpressionT;
+alias ExpressionT = NoDuplicates!(AliasSeq!(
     // Declaration, 
     // Assignment,
     // BinaryOp,
@@ -61,8 +73,17 @@ alias Expression = NoDuplicates!(AliasSeq!(
     // CallExpr,
     Scope,
     IntegerLit,
-    StringLit
+    StringLit,
+    Return
     ));
+
+
+struct Return {
+    mixin ExprState;
+    private Expression* _expr = new Expression;
+    Expression expr() {return *_expr;}
+    void expr(Expression ex) {*_expr = ex;}
+}
 
 
 struct Variable {
@@ -76,18 +97,38 @@ struct Variable {
 struct IntegerLit {
     mixin ExprState;
     long value;
-
+    string[] toLines() {
+        return ["lit: "~value.to!string];
+    }
 }
 
 struct StringLit {
     mixin ExprState;
     string value;
+    string[] toLines() {
+        return ["lit: \""~value~'\"'];
+    }
 }
+
+struct Scope {
+    mixin ExprState;
+    Expression[] statements;
+
+    string[] toLines() {
+        import std.algorithm : map;
+
+        // string[] argsStr;
+        // foreach (a; args) argsStr ~= a.to!string;
+        return ["scope:"] ~
+            getTab(statements);
+    }
+}
+
 
 
 // struct IfExpr {
 //     mixin ExprState;
-//     Expression condition;
+//     ExpressionT condition;
 //     Scope ifTrue;
 //     Scope ifFalse;
 
@@ -109,7 +150,7 @@ struct StringLit {
 //     mixin ExprState;
 //     string name;
 //     Type type;
-//     Option!Expression initial;
+//     Option!ExpressionT initial;
 //     this(string str) {
 //         name = str;
 //     }
@@ -125,8 +166,8 @@ struct StringLit {
 
 // struct Assignment {
 //     mixin ExprState;
-//     Option!Expression lhs;
-//     Option!Expression rhs;
+//     Option!ExpressionT lhs;
+//     Option!ExpressionT rhs;
 // }
 
 // struct BinaryOp(string op) {
@@ -161,21 +202,8 @@ struct StringLit {
 
 // struct CallExpr {
 //     mixin ExprState;
-//     Expression caller;
-//     Expression[] args;
+//     ExpressionT caller;
+//     ExpressionT[] args;
 // }
 
-struct Scope {
-    mixin ExprState;
-    Statement[] statements;
-
-    string[] toLines() {
-        import std.algorithm : map;
-
-        // string[] argsStr;
-        // foreach (a; args) argsStr ~= a.to!string;
-        return ["scope:"] ~
-            getTab(statements);
-    }
-}
 // //*/

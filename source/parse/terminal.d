@@ -44,17 +44,19 @@ Result!Unit parseSym(string str)() {
     mixin errorPass;
 
     // static if (str == ";") {
-    //     parseSym!"}";
+    // }
+
+    
+    // static if (str == "}") {
     // }
 
     consumeWhitespace();
 
     size_t i = 0;
     while (i < str.length) {
-        if (lastChar != str[i]) break;
+        if (lastChar != str[i]) return err!(str ~ " not found.");
         popChar(); ++i;
     }
-
     // writefln("(%s)", str);
     return ok(nil);
 }
@@ -106,12 +108,16 @@ Result!IntegerLit parseInt() {
 }
 
 
-// Result!Unit parseNotEOF() {
-//     mixin errorPass;
-//     consumeWhitespace();
-//     if (file.eof) return ok(nil);
-//     else return err!"end of file reached";
-// }
+bool isEOF() {
+    auto seek = tellPosition();
+    consumeWhitespace();
+    if (file.eof) {
+        file.seek(seek-1);
+        popChar();
+        return true;
+    }
+    return false;
+}
 
 
 Result!StringLit parseString() {

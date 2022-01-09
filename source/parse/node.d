@@ -32,18 +32,36 @@ Result!Variable parseVariable() {
 Result!(Scope) parseScope() {
     mixin errorPass;
 
+    static c = 0;
+    writefln!":%s"(c++);
+    scope(exit) c--;
+
     if (!parseSym!"{".isOk)
         return err!"Missing open bracket.";
 
-    Scope scope_;
+    Scope scop;
+    // statementClosed = true;
 
     while (1) {
-        import parse.top: parseStatement;
+        import parse.top: parseStatement, checkClosure;
         
         if (parseSym!"}".isOk) break;
         consumeWhitespace;
-        if (file.eof) assert(0, "Premature end of file.");
-        scope_.statements ~= parseStatement();
+        assert(!file.eof, "Premature end of file.");
+        scop.statements ~= parseStatement();
+        if (parseSym!"}".isOk) {
+            Return r;
+            writeln("A");
+            auto stat = scop.statements[$-1];
+            writeln("A");
+            r.expr(stat);
+            writeln("A");
+            scop.statements[$-1] = r;
+            writeln("A");
+            break; 
+        }
+        assert (checkClosure(), (new Err("Missing semicolon.")).toString);
     }
-    return ok(scope_);
+    closeBracketFlag = true;
+    return ok(scop);
 }
