@@ -2,7 +2,6 @@ module parse.core;
 
 import tools;
 import ast;
-// import terminal;
 
 import std.stdio;
 import std.traits;
@@ -11,12 +10,12 @@ import std.sumtype;
 import std.container : SList;
 import std.typecons : Tuple, tuple;
 import std.conv;
+
 /+~~~~~/+~~~Internal State~~~+/~~~~~+/
 File* file;
 char lastChar = ' ';
-Object parent;
-bool statementClosed = false;
-/+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+/
+bool closeBracketFlag = false;
+/+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+/
 
 File* loadSource(T)(T location) {
     return new File(location, "rb");
@@ -40,7 +39,12 @@ size_t tellPosition() {
 }
 
 
-
+bool look(alias par)() {
+    auto seek = tellPosition();
+    scope(exit) file.seek(seek-1);
+    popChar();
+    return par.isOk;
+}
 
 
 mixin template errorPass() {
@@ -57,17 +61,7 @@ mixin template errorPass() {
         return err!("err in "~FNAME);
     }
     Res err(string msg)() {
-        if (seek == 0) {
-            lastChar = '\0';
-            file.seek(0);
-        }
-
-        else {
-            assert(seek > 0, "index %s is out of range.".format(seek));
-            // writefln("...return to %s, line %s", seek, currentLine);
-            file.seek(seek-1);
-            popChar();
-        }
+        file.seekPop(seek);
         while (lineStack.front > seek) {
             currentLine -= 1;
             lineStack.removeFront();
@@ -77,9 +71,25 @@ mixin template errorPass() {
 
 
     Res ok(T)(T val) if(__traits(compiles, typeof(return)(val))) {
+        writefln!"%s %s (%s)"(FNAME, seek, lastChar);
         return Res(val);
     }
 }
+
+
+void seekPop(File* f, ptrdiff_t seek) {
+    if (seek == 0) {
+        lastChar = '\0';
+        f.seek(0);
+    }
+
+    else {
+        assert(seek > 0, "index %s is out of range.".format(seek));
+        f.seek(seek-1);
+        popChar();
+    }
+}
+
 
 void consumeWhitespace() {
     import std.uni : isWhite;

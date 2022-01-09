@@ -1,18 +1,30 @@
 module parse;
 
-import parse.node;
-import parse.terminal;
-import parse.core;
-import parse.top;
+public import parse.node;
+public import parse.terminal;
+public import parse.core;
+public import parse.top;
+
 
 import std.stdio;
 
 
 unittest {
+    import ast;
     file = loadSource("code/main.dn");
-    // assert(cast(string)parseIdentifier() == "myFoe");
-    auto ast = parseGlobal();
-    assert(ast);
-    writefln!"%(%s\n%)"(ast);
-    // writefln!"%s"(ast);W
+
+    auto tree = parseGlobal();
+    // assert(tree);
+    writeln(tree);
+    writeln(tree.statements.length);
+
+    // writeln(file.tell);
+    // parseSym!"{";
+    // writeln(file.tell);
+    // parseSym!".";
+    // writeln(file.tell);
+    // parseSym!"}";
+    // writeln(file.tell);
+    
 }
+

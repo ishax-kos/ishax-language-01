@@ -15,39 +15,63 @@ import std.sumtype;
 import std.algorithm;
 
 
-Statement[] parseGlobal() {
-    // mixin errorPass;
-
-    Statement[] scop;
+Scope parseGlobal() {
+    Scope scop;
+    // statementClosed = true;
     while (1) {
-        consumeWhitespace();
-        if (file.eof()) break;
-        statementClosed = false;
-        scop ~= parseStatement;
-        // else
-        //     assert(0);
+        if (isEOF) {
+            break;
+        }
+        writeln("st");
+        scop.statements ~= [parseStatement];
+        assert (checkClosure(), (new Err("Missing semicolon.")).toString);
     }
+    
+    // assert(statementClosed, (new Err("Missing semicolon at end of file.")).toString);
     return scop;
 }
 
-Statement parseStatement() {
-   return parseExpression.unwrap;
+Expression parseStatement() {
+    // mixin errorPass;
+    // assert(statementClosed, (new Err("Missing semicolon.")).toString);
+    // writeln(__FUNCTION__);
+    auto st = parseExpression.unwrap;
+    
+    return st;
+}
+
+int checkClosure() {
+    enum {
+        False,
+        Semi,
+        Bracket
+    }
+    if (closeBracketFlag) {
+        closeBracketFlag = false;
+        return Bracket;
+    }
+    if (parseSym!";".isOk) return Semi;
+    // auto seek = tellPosition();
+    return False;
 }
 
 
-Result!(SumType!Expression) parseExpression() {
+Result!(SumType!ExpressionT) parseExpression() {
     mixin errorPass;
-    alias Sum = SumType!Expression;
+    alias Sum = SumType!ExpressionT;
 
     template CHECK(alias fn) {
-        enum CHECK = q{{auto val = %s; if (val.isOk)
+        enum CHECK = q{{
+        auto val = %s; 
+        if (val.isOk)
             return ok(Sum(val.unwrap));
         }}.format(fn.stringof);
     }
+    
+    mixin (CHECK!parseScope);
     mixin (CHECK!parseInt);
     mixin (CHECK!parseString);
     mixin (CHECK!parseVariable);
-    mixin (CHECK!parseScope);
-    //*/
-    return err!"Expression err";
+
+    return err!"ExpressionT err";
 }
