@@ -1,4 +1,4 @@
-module parse.terminal;
+module parse.bottom;
 
 import parse.core;
 import ast;
@@ -54,10 +54,9 @@ Result!Unit parseSym(string str)() {
 
     size_t i = 0;
     while (i < str.length) {
-        if (lastChar != str[i]) return err!(str ~ " not found.");
+        if (lastChar != str[i]) return err(str ~ " not found.");
         popChar(); ++i;
     }
-    // writefln("(%s)", str);
     return ok(nil);
 }
 
@@ -70,10 +69,10 @@ Result!Unit parseKey(string str)() {
     consumeWhitespace();
     size_t i = 0;
     while (i < str.length) {
-        if (lastChar != str[i]) return err!"keyword not found.";
+        if (lastChar != str[i]) return err("keyword not found.");
         popChar(); ++i;
     }
-    if (lastChar.isAlphaNum) return err!"keyword doesn't terminate.";
+    if (lastChar.isAlphaNum) return err("keyword doesn't terminate.");
     return ok(nil);
 }
 
@@ -111,12 +110,13 @@ Result!IntegerLit parseInt() {
 bool isEOF() {
     auto seek = tellPosition();
     consumeWhitespace();
-    if (file.eof) {
-        file.seek(seek-1);
+    if (!file.eof) {
+        if (seek > 0) file.seek(seek-1);
+        else file.seek(seek);
         popChar();
-        return true;
+        return false;
     }
-    return false;
+    return true;
 }
 
 
@@ -139,3 +139,5 @@ Result!StringLit parseString() {
     // writeln(str.value);
     return ok(str);
 }
+
+
