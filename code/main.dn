@@ -1,1 +1,21 @@
-{ 5; 5 } 6;
+:bungar if (val) {
+    statement
+}
+else {
+    blandoss
+};
+
+:bar 5;
+:foo (:bar, :b) {7};
+{
+    :tempVal 5;
+}
+
+
+if (true) {
+    false;
+}
+
+mutate bar, 6;
+
+foo(bar, baz);
