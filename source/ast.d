@@ -19,11 +19,11 @@ string[] getTab(string[] strList) {
     return strList.map!(a => ("  " ~ a))().array;
 }
 
-string[] getTab(T)(T[] strList) {
+string[] getTabArray(T)(T exList) {
     import std.algorithm;
     import std.range;
 
-    string[][] list = strList.map!(a => a.toLines).array;
+    string[][] list = exList.map!(a => a.toLines).array;
     return list.join.getTab;
 }
 
