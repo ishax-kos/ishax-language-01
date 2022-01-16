@@ -51,23 +51,36 @@ mixin template ExprState() {
     }
 }
 
-// alias Statement = SumType!StatementT;
-// alias StatementT = NoDuplicates!(
-//     ExpressionT,
-//     Return
-// );
+
+mixin template SetGet(T, string name) {
+    enum _name = "_"~name;
+    mixin("private ",T,"* ",_name,";");
+    mixin(
+    T,` `, name,`() {
+        if (!`,_name,`) `,_name,` = new `,T,`();
+        return *`,_name,`;
+    }
+    void `,name,`(`,T,` ex) {
+        if (!`,_name,`) `,_name,` = new `,T,`();
+        *`,_name,` = ex;
+    }`);
+}
+
 
 /+~~~~Expressions~~~~+/
 
+alias LValueNodes = AliasSeq!(
+    Variable
+);
 alias Expression = SumType!ExpressionT;
 alias ExpressionT = NoDuplicates!(AliasSeq!(
-    // Declaration, 
-    // Assignment,
+    Declaration, 
+    Assignment,
     // BinaryOp,
-    // FuncLiteral,
+    FuncLiteral,
     Variable,
-    // IfExpr,
-    // CallExpr,
+    IfExpr,
+    CallExpr,
     Scope,
     IntegerLit,
     StringLit,
@@ -77,9 +90,13 @@ alias ExpressionT = NoDuplicates!(AliasSeq!(
 
 struct Return {
     mixin ExprState;
-    private Expression* _expr = new Expression;
-    Expression expr() {return *_expr;}
-    void expr(Expression ex) {*_expr = ex;}
+    mixin SetGet!(Expression, "expr");
+    this(Expression ex) {expr(ex);}
+
+    string[] toLines() {
+        return ["returns: "] ~
+            getTabArray([*_expr]);
+    }
 }
 
 
@@ -117,90 +134,127 @@ struct Scope {
         // string[] argsStr;
         // foreach (a; args) argsStr ~= a.to!string;
         return ["scope:"] ~
-            getTab(statements);
+            getTabArray(statements);
     }
 }
 
 
 
-// struct IfExpr {
-//     mixin ExprState;
-//     ExpressionT condition;
-//     Scope ifTrue;
-//     Scope ifFalse;
+struct IfExpr {
+    mixin ExprState;
+    mixin SetGet!(Expression, "condition");
+    mixin SetGet!(Scope, "ifTrue");
+    mixin SetGet!(Scope, "ifFalse");
+    // Scope ifTrue;
+    // Scope ifFalse;
 
-//     string[] toLines() {
-//         // string s = "if:\n" ~
-//         // getTab("condition:\n" ~getTab(condition,2)) ~
-//         // getTab("then:\n" ~ifTrue.map!(a=>getTab(a,2)).array.join);
-//         // if (ifFalse.length > 0)
-//         // s ~= getTab("else:\n"~ifFalse.map!(a=>getTab(a,2)).array.join);
+    string[] toLines() {
+        // string s = "if:\n" ~
+        // getTab("condition:\n" ~getTab(condition,2)) ~
+        // getTab("then:\n" ~ifTrue.map!(a=>getTab(a,2)).array.join);
+        // if (ifFalse.length > 0)
+        // s ~= getTab("else:\n"~ifFalse.map!(a=>getTab(a,2)).array.join);
         
-//         return ["if"] ~
-//             getTab(["condition"] ~ getTab([condition])) ~
-//             getTab(["then"] ~ getTab([ifTrue])) ~
-//             getTab(["else"] ~ getTab([ifFalse]));
-//     }
-// }
+        return ["if"] ~
+            getTab(["condition"] ~ condition.toLines.getTab) ~
+            getTab(["then"] ~ ifTrue.toLines.getTab) ~
+            getTab(["else"] ~ ifFalse.toLines.getTab);
+    }
+}
 
-// struct Declaration {
-//     mixin ExprState;
-//     string name;
-//     Type type;
-//     Option!ExpressionT initial;
-//     this(string str) {
-//         name = str;
-//     }
+struct Declaration {
+    mixin ExprState;
+    string name;
+    /// Due to an error in DMD, this cannot use the Nullable wrapper, pointer or otherwise.
+    Expression* initial;
 
-//     string[] toLines() {
-//         return "def:" ~
-//             getTab(
-//                 ("name: " ~ name) ~
-//                     initial.tryLines
-//             );
-//     }
-// }
+    Expression unwrap_initial() {
+        assert(initial, "value is none.");
+        return *initial;
+    }
+    void some_initial(Expression ex) {
+        if (!initial) initial = new Expression();
+        *initial = ex;
+    }
 
-// struct Assignment {
-//     mixin ExprState;
-//     Option!ExpressionT lhs;
-//     Option!ExpressionT rhs;
-// }
+    string[] toLines() {
+        return ["def:"] ~
+            getTab(
+                ["name: " ~ name] ~ 
+                (initial ? (*initial).toLines : ["none"])
+            );
+    }
+}
 
-// struct BinaryOp(string op) {
-//     mixin ExprState;
-// }
+struct Assignment {
+    mixin ExprState;
+    mixin SetGet!(Expression, "lhs");
+    mixin SetGet!(Expression, "rhs");
 
-// struct FuncLiteral {
-//     mixin ExprState;
-//     Declaration[] args;
-//     Scope scop;
-//     this(typeof(args) args_, typeof(scop) scop_) {
-//         args = args_;
-//         scop = scop_;
-//     }
+    string[] toLines() {
+        import std.algorithm : map;
 
-//     string[] toLines() {
-//         import std.algorithm : map;
-
-//         // string[] argsStr;
-//         // foreach (a; args) argsStr ~= a.to!string;
-//         return (
-//             ["func:"] ~
-//             getTab(
-//                 ["args:"] ~
-//                 getTab(args) ~
-//                 scop.toLines
-//             )
-//         );
-//     }
-// }
+        // string[] argsStr;
+        // foreach (a; args) argsStr ~= a.to!string;
+        return (
+            ["assign:"] ~
+            getTab(
+                ["to:"] ~ lhs.toLines.getTab ~
+                ["=:"]  ~ rhs.toLines.getTab
+            )
+        );
+    }
+}
 
 
-// struct CallExpr {
-//     mixin ExprState;
-//     ExpressionT caller;
-//     ExpressionT[] args;
-// }
+struct BinaryOp(string op) {
+    mixin ExprState;
+}
+
+struct FuncLiteral {
+    mixin ExprState;
+    Declaration[] args;
+    Scope* scop;
+    this(typeof(args) args_, typeof(*scop) scop_) {
+        args = args_;
+        *scop = scop_;
+    }
+
+    string[] toLines() {
+        import std.algorithm : map;
+
+        // string[] argsStr;
+        // foreach (a; args) argsStr ~= a.to!string;
+        return (
+            ["func:"] ~
+            getTab(
+                ["args:"] ~
+                args.getTabArray ~
+                (*scop).toLines
+            )
+        );
+    }
+}
+
+
+struct CallExpr {
+    mixin ExprState;
+    mixin SetGet!(Expression, "caller");
+    Expression[] args;
+
+    string[] toLines() {
+        import std.algorithm : map;
+
+        // string[] argsStr;
+        // foreach (a; args) argsStr ~= a.to!string;
+        return (
+            ["call:"] ~
+            getTab(
+                ["caller:"] ~ caller.toLines.getTab ~
+                ["args:"] ~ args.getTabArray
+            )
+        );
+    }
+}
 
 // //*/
