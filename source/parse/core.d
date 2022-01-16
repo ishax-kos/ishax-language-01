@@ -14,7 +14,7 @@ import std.conv;
 /+~~~~~/+~~~Internal State~~~+/~~~~~+/
 File* file;
 char lastChar = ' ';
-bool closeBracketFlag = false;
+// bool closeBracketFlag = false;
 /+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+/
 
 File* loadSource(T)(T location) {
@@ -39,12 +39,12 @@ size_t tellPosition() {
 }
 
 
-bool look(alias par)() {
-    auto seek = tellPosition();
-    scope(exit) file.seek(seek-1);
-    popChar();
-    return par.isOk;
-}
+// bool look(alias par)() {
+//     auto seek = tellPosition();
+//     scope(exit) file.seek(seek-1);
+//     popChar();
+//     return par.isOk;
+// }
 
 
 mixin template errorPass() {
@@ -57,16 +57,26 @@ mixin template errorPass() {
     private alias RetT = ResultType!(typeof(return));
     enum FNAME = __FUNCTION__;
 
-    Res err() {
-        return err!("err in "~FNAME);
+    Res err(string msg = "err in "~FNAME) {
+        return resultErr(new Err(msg));
     }
-    Res err(string msg)() {
+
+    
+    Res passErr(T)(T res) {
+        return res.match!(
+            (Err e) => resultErr(e),
+            function Res(v) {assert(0);}
+        )();
+    }
+
+
+    Res resultErr(Err e) {
         file.seekPop(seek);
         while (lineStack.front > seek) {
             currentLine -= 1;
             lineStack.removeFront();
         }
-        return Res(new Err(msg));
+        return Res(e);
     }
 
 
@@ -131,7 +141,11 @@ enum string[] keywords = [
     "if",
     "then",
     "else",
-    "stdout"
+    "stdout",
+    "mutate",
+    "mut",
+    "pub",
+    
 ];
 
 
@@ -174,6 +188,27 @@ bool isOk(T)(T res) {
         (_) => true
     )();
 }
+
+
+bool isErr(T)(T res) {
+    return res.match!(
+        (Err e) => true,
+        (_) => false
+    )();
+}
+
+
+bool isT(T...)(Expression res) {
+    bool ret;
+    static foreach (TT; T) {
+        ret |= res.match!(
+            (TT e) => true,
+            (_) => false
+        )();
+    }
+    return ret;
+}
+
 
 template isResult(T) {
     enum bool isResult =
