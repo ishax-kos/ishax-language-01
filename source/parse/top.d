@@ -22,56 +22,55 @@ Scope parseGlobal() {
         if (isEOF) {
             break;
         }
-        writeln("st");
-        scop.statements ~= [parseStatement];
-        assert (checkClosure(), (new Err("Missing semicolon.")).toString);
+        scop.statements ~= [parseExpression.unwrap.parseIsStatement];
     }
     
     // assert(statementClosed, (new Err("Missing semicolon at end of file.")).toString);
     return scop;
 }
 
-Expression parseStatement() {
-    // mixin errorPass;
-    // assert(statementClosed, (new Err("Missing semicolon.")).toString);
-    // writeln(__FUNCTION__);
-    auto st = parseExpression.unwrap;
-    
-    return st;
+
+Expression parseIsStatement(Expression expr) {
+    enum Sep = ";";
+    bool parseSep() {
+        return isEOF() || parseSym!Sep.isOk;
+    }
+    assert (
+        expr.match!(
+            (Scope _) => true,
+            (IfExpr _) => true,
+            (_) => parseSep,
+        )(),
+        (new Err("Missing semicolon.")).toString
+    );
+    return expr;
 }
 
-int checkClosure() {
-    enum {
-        False,
-        Semi,
-        Bracket
+
+template CHECK(alias fn) {
+    enum CHECK = q{{
+    auto val = %1$s; 
+    if (val.isOk) {
+        writeln("shit_","%1$s");
+        return ok(Expression(val.unwrap));
     }
-    if (closeBracketFlag) {
-        closeBracketFlag = false;
-        return Bracket;
-    }
-    if (parseSym!";".isOk) return Semi;
-    // auto seek = tellPosition();
-    return False;
+    }}.format(fn.stringof);
 }
 
 
 Result!(SumType!ExpressionT) parseExpression() {
     mixin errorPass;
-    alias Sum = SumType!ExpressionT;
-
-    template CHECK(alias fn) {
-        enum CHECK = q{{
-        auto val = %s; 
-        if (val.isOk)
-            return ok(Sum(val.unwrap));
-        }}.format(fn.stringof);
-    }
     
+    mixin (CHECK!parseAssign);
+    mixin (CHECK!parseIfElse);
+    mixin (CHECK!parseCall);
+    mixin (CHECK!parseFuncLiteral);
     mixin (CHECK!parseScope);
+    mixin (CHECK!parseDeclare);
     mixin (CHECK!parseInt);
     mixin (CHECK!parseString);
     mixin (CHECK!parseVariable);
 
-    return err!"ExpressionT err";
+    return err("Expression err");
 }
+
