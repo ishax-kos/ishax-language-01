@@ -2,8 +2,8 @@ module parse.top;
 
 import parse.core;
 import parse.top;
-import parse.terminal;
-import parse.node;
+import parse.bottom;
+import parse.compound;
 
 import ast;
 import tools;
